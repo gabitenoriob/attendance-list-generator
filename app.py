@@ -9,11 +9,11 @@ import base64
 from io import BytesIO
 from dbSettings.presenca_schema import Presenca
 from dbSettings.reuniao_schema import Reuniao
-
+from dbSettings.database import db
 app = Flask(__name__)
-
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
-db = SQLAlchemy(app)
+db.init_app(app)
+
 
 def gerar_qrcode_base64(url):
     qr = qrcode.QRCode(

@@ -1,4 +1,4 @@
-from app import db 
+from .database import db 
 
 class Presenca(db.Model):
     id = db.Column(db.String(8), primary_key=True)
