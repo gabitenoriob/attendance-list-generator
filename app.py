@@ -2,33 +2,18 @@ from flask import Flask, render_template, request, send_file, redirect, url_for
 import qrcode
 import uuid
 import csv
+from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import os
 import base64
 from io import BytesIO
+from db.reuniao_schema import Reuniao
+from db.presenca_schema import Presenca
 
 app = Flask(__name__)
 
-MEETINGS_CSV = "data/reunioes.csv"
-PRESENCA_CSV = "data/registros_presenca.csv"
-
-os.makedirs('data', exist_ok=True)
-os.makedirs('templates', exist_ok=True)
-
-def salvar_reuniao_csv(meeting_id, descricao):
-    with open(MEETINGS_CSV, "a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow([meeting_id, descricao, datetime.now().strftime("%d-%m-%Y %H:%M:%S")])
-
-def carregar_reunioes():
-    reunioes = []
-    if os.path.exists(MEETINGS_CSV):
-        with open(MEETINGS_CSV, "r", encoding="utf-8") as f:
-            reader = csv.reader(f)
-            for row in reader:
-                if len(row) >= 2:
-                    reunioes.append({"id": row[0], "descricao": row[1], "data_criacao": row[2] if len(row) > 2 else "N/A"})
-    return reunioes
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+db = SQLAlchemy(app)
 
 def gerar_qrcode_base64(url):
     qr = qrcode.QRCode(
@@ -50,50 +35,75 @@ def gerar_qrcode_base64(url):
 def index():
     if request.method == "POST":
         descricao = request.form.get("descricao", "Reunião sem descrição")
-        meeting_id = str(uuid.uuid4())[:8]
-        salvar_reuniao_csv(meeting_id, descricao)
-        url = url_for('checkin', meeting_id=meeting_id, _external=True)
+        
+        nova_reuniao = Reuniao(
+            id=str(uuid.uuid4())[:8],
+            descricao=descricao,
+            data_criacao=datetime.now()
+        )
+        db.session.add(nova_reuniao)
+        db.session.commit()
+        
+        url = url_for('checkin', meeting_id=nova_reuniao.id, _external=True)
         qrcode_b64 = gerar_qrcode_base64(url)
-        return render_template("admin.html", meeting_id=meeting_id, descricao=descricao, qrcode=qrcode_b64)
+        
+        return render_template("admin.html", meeting_id=nova_reuniao.id, descricao=descricao, qrcode=qrcode_b64)
     
-    reunioes = carregar_reunioes()
+    reunioes = db.session.execute(db.select(Reuniao)).scalars().all()
+    
     return render_template("index.html", reunioes=reunioes)
 
 @app.route("/checkin/<meeting_id>", methods=["GET", "POST"])
 def checkin(meeting_id):
-    reunioes = carregar_reunioes()
-    meeting_info = next((item for item in reunioes if item["id"] == meeting_id), None)
-
-    if not meeting_info:
-        return "Reunião não encontrada!", 404
+    reuniao_info = db.get_or_404(Reuniao, meeting_id)
 
     if request.method == "POST":
         nome = request.form.get("nome", "N/A")
         cargo = request.form.get("cargo", "N/A")
         setor = request.form.get("setor", "N/A")
         
-        entrada = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-
-        with open(PRESENCA_CSV, "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow([nome, cargo, setor, entrada, meeting_id, meeting_info["descricao"]])
+        nova_presenca = Presenca(
+            id=str(uuid.uuid4())[:8],
+            nome=nome,
+            cargo=cargo,
+            setor=setor,
+            entrada=datetime.now(),
+            meeting_id=meeting_id
+        )
+        db.session.add(nova_presenca)
+        db.session.commit()
         
         return render_template("success.html", nome=nome, meeting_id=meeting_id)
 
-    return render_template("checkin.html", meeting_id=meeting_id, descricao=meeting_info["descricao"])
+    return render_template("checkin.html", meeting_id=meeting_id, descricao=reuniao_info.descricao)
 
 @app.route("/download/<meeting_id>")
 def download(meeting_id):
+    reuniao_info = db.get_or_404(Reuniao, meeting_id)
+    
+    presencas = db.session.execute(db.select(Presenca).filter_by(meeting_id=meeting_id)).scalars().all()
+
     filename = f"presencas_reuniao_{meeting_id}.csv"
-    with open(PRESENCA_CSV, "r", encoding="utf-8") as f_in, open(filename, "w", newline="", encoding="utf-8") as f_out:
-        reader = csv.reader(f_in)
-        writer = csv.writer(f_out)
-        writer.writerow(["Nome", "Cargo", "Setor", "Entrada", "ID Reunião", "Descrição"]) # Cabeçalho
-        for row in reader:
-            if len(row) > 4 and row[4] == meeting_id:
-                writer.writerow(row)
+    
+    with open(filename, "w", newline="", encoding="utf-8") as f:
+        fieldnames = ["id", "nome", "cargo", "setor", "entrada", "meeting_id", "descricao_reuniao"]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        for p in presencas:
+            writer.writerow({
+                "id": p.id,
+                "nome": p.nome,
+                "cargo": p.cargo,
+                "setor": p.setor,
+                "entrada": p.entrada.strftime("%d-%m-%Y %H:%M:%S"),
+                "meeting_id": p.meeting_id,
+                "descricao_reuniao": reuniao_info.descricao
+            })
     
     return send_file(filename, as_attachment=True)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)
