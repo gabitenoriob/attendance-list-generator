@@ -64,7 +64,7 @@ def checkin(meeting_id):
         setor = request.form.get("setor", "N/A")
         
         nova_presenca = Presenca(
-            id=str(uuid.uuid4())[:8],
+            id=str(uuid.uuid4()),
             nome=nome,
             cargo=cargo,
             setor=setor,
