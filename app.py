@@ -8,7 +8,6 @@ import base64
 from io import BytesIO
 
 app = Flask(__name__)
-app.run(debug=True)
 
 MEETINGS_CSV = "data/reunioes.csv"
 PRESENCA_CSV = "data/registros_presenca.csv"
