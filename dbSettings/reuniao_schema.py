@@ -1,6 +1,10 @@
+from datetime import datetime
+import uuid
+from sqlalchemy import UUID
 from .database import db 
 
 class Reuniao(db.Model):
-    id = db.Column(db.String(12), primary_key=True)
+    __tablename__ = 'reuniao'
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     descricao = db.Column(db.String(255), nullable=False)
-    data_criacao = db.Column(db.String(200), nullable=False)
+    data_criacao = db.Column(db.DateTime, default=datetime.now)

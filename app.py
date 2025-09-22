@@ -38,7 +38,7 @@ def index():
         descricao = request.form.get("descricao", "Reunião sem descrição")
         
         nova_reuniao = Reuniao(
-            id=str(uuid.uuid4())[:8],
+            id= str(uuid.uuid4()),
             descricao=descricao,
             data_criacao=datetime.now()
         )
