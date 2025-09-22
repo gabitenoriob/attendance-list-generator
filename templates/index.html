@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <title>Admin - Reuniões</title>
+</head>
+<body>
+    <h1>Iniciar Nova Reunião</h1>
+    <form method="post">
+        Descrição da Reunião: <input type="text" name="descricao" required>
+        <button type="submit">Iniciar Reunião</button>
+    </form>
+
+    <hr>
+
+    <h2>Reuniões Ativas</h2>
+    {% if reunioes %}
+        <ul>
+        {% for reuniao in reunioes %}
+            <li>
+                ID: {{ reuniao.id }} - Descrição: {{ reuniao.descricao }} -
+                <a href="{{ url_for('checkin', meeting_id=reuniao.id) }}">Link Check-in</a> -
+                <a href="{{ url_for('download', meeting_id=reuniao.id) }}">Baixar CSV</a>
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>Nenhuma reunião em andamento.</p>
+    {% endif %}
+</body>
+</html>
