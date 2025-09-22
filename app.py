@@ -7,8 +7,8 @@ from datetime import datetime
 import os
 import base64
 from io import BytesIO
-from db.reuniao_schema import Reuniao
-from db.presenca_schema import Presenca
+from dbSettings.presenca_schema import Presenca
+from dbSettings.reuniao_schema import Reuniao
 
 app = Flask(__name__)
 
