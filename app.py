@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file, redirect, url_for
+from flask import Flask, jsonify, render_template, request, send_file, redirect, url_for
 import qrcode
 import uuid
 import csv
@@ -103,6 +103,20 @@ def download(meeting_id):
             })
     
     return send_file(filename, as_attachment=True)
-
+@app.route("/corrigir", methods=["GET"])
+def corrigir_colunas():
+    queries = [
+        "ALTER TABLE reuniao ALTER COLUMN id TYPE UUID USING id::uuid;",
+        "ALTER TABLE presenca ALTER COLUMN id TYPE UUID USING id::uuid;",
+        "ALTER TABLE presenca ALTER COLUMN meeting_id TYPE UUID USING meeting_id::uuid;"
+    ]
+    try:
+        for q in queries:
+            db.session.execute(q)
+        db.session.commit()
+        return jsonify({"status": "sucesso", "mensagem": "Colunas ajustadas com sucesso!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "erro", "mensagem": str(e)}), 500
 if __name__ == '__main__':
     app.run(debug=True)
