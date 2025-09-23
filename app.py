@@ -108,9 +108,10 @@ def download(meeting_id):
 @app.route("/corrigir", methods=["GET"])
 def corrigir_colunas():
     queries = [
-        text("ALTER TABLE reuniao ALTER COLUMN id TYPE UUID USING id::uuid;"),
-        text("ALTER TABLE presenca ALTER COLUMN id TYPE UUID USING id::uuid;"),
-        text("ALTER TABLE presenca ALTER COLUMN meeting_id TYPE UUID USING meeting_id::uuid;")
+        text("ALTER TABLE presenca DROP CONSTRAINT presenca_meeting_id_fkey"),
+        text("ALTER TABLE reuniao ALTER COLUMN id TYPE UUID USING id::uuid"),
+        text("ALTER TABLE presenca ALTER COLUMN meeting_id TYPE UUID USING meeting_id::uuid"),
+        text("ALTER TABLE presenca ADD CONSTRAINT presenca_meeting_id_fkey FOREIGN KEY (meeting_id) REFERENCES reuniao(id)")
     ]
     try:
         for q in queries:
