@@ -106,9 +106,9 @@ def download(meeting_id):
 @app.route("/corrigir", methods=["GET"])
 def corrigir_colunas():
     queries = [
-        "ALTER TABLE reuniao ALTER COLUMN id TYPE UUID USING id::uuid;",
-        "ALTER TABLE presenca ALTER COLUMN id TYPE UUID USING id::uuid;",
-        "ALTER TABLE presenca ALTER COLUMN meeting_id TYPE UUID USING meeting_id::uuid;"
+        text("ALTER TABLE reuniao ALTER COLUMN id TYPE UUID USING id::uuid;"),
+        text("ALTER TABLE presenca ALTER COLUMN id TYPE UUID USING id::uuid;"),
+        text("ALTER TABLE presenca ALTER COLUMN meeting_id TYPE UUID USING meeting_id::uuid;")
     ]
     try:
         for q in queries:
