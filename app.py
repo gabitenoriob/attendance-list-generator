@@ -7,6 +7,8 @@ from datetime import datetime
 import os
 import base64
 from io import BytesIO
+
+from sqlalchemy import text
 from dbSettings.presenca_schema import Presenca
 from dbSettings.reuniao_schema import Reuniao
 from dbSettings.database import db
