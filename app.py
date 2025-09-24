@@ -120,3 +120,14 @@ def corrigir_colunas():
         return jsonify({"status": "sucesso", "mensagem": "Colunas ajustadas com sucesso!"}), 200
     except Exception as e:
         return jsonify({"status": "erro", "mensagem": str(e)}), 500
+    
+@app.route("/drop", methods=["GET"]):
+def drop_tables():
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS presenca CASCADE"))
+            conn.execute(text("DROP TABLE IF EXISTS reuniao CASCADE"))
+        db.create_all()
+        return jsonify({"status": "sucesso", "mensagem": "Tabelas removidas e recriadas com sucesso!"}), 200
+    except Exception as e:
+        return jsonify({"status": "erro", "mensagem": str(e)}), 500
