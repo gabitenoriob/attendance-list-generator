@@ -121,7 +121,7 @@ def corrigir_colunas():
     except Exception as e:
         return jsonify({"status": "erro", "mensagem": str(e)}), 500
     
-@app.route("/drop", methods=["GET"]):
+@app.route("/drop", methods=["GET"])
 def drop_tables():
     try:
         with db.engine.begin() as conn:
