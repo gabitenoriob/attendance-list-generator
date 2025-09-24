@@ -108,18 +108,15 @@ def download(meeting_id):
 @app.route("/corrigir", methods=["GET"])
 def corrigir_colunas():
     queries = [
-        text("ALTER TABLE presenca DROP CONSTRAINT presenca_meeting_id_fkey"),
-        text("ALTER TABLE reuniao ALTER COLUMN id TYPE UUID USING id::uuid"),
-        text("ALTER TABLE presenca ALTER COLUMN meeting_id TYPE UUID USING meeting_id::uuid"),
-        text("ALTER TABLE presenca ADD CONSTRAINT presenca_meeting_id_fkey FOREIGN KEY (meeting_id) REFERENCES reuniao(id)")
+        "ALTER TABLE presenca DROP CONSTRAINT IF EXISTS presenca_meeting_id_fkey",
+        "ALTER TABLE reuniao ALTER COLUMN id TYPE UUID USING id::uuid",
+        "ALTER TABLE presenca ALTER COLUMN meeting_id TYPE UUID USING meeting_id::uuid",
+        "ALTER TABLE presenca ADD CONSTRAINT presenca_meeting_id_fkey FOREIGN KEY (meeting_id) REFERENCES reuniao(id)"
     ]
     try:
-        for q in queries:
-            db.session.execute(q)
-        db.session.commit()
+        with db.engine.begin() as conn: 
+            for q in queries:
+                conn.execute(text(q))
         return jsonify({"status": "sucesso", "mensagem": "Colunas ajustadas com sucesso!"}), 200
     except Exception as e:
-        db.session.rollback()
         return jsonify({"status": "erro", "mensagem": str(e)}), 500
-if __name__ == '__main__':
-    app.run(debug=True)
