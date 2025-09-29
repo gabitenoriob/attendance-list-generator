@@ -88,7 +88,7 @@ def gerar_e_enviar_relatorio_por_reuniao(meeting_id):
     email_port = int(os.environ.get('EMAIL_PORT', 587))
     email_user = os.environ.get('EMAIL_USER')
     email_pass = os.environ.get('EMAIL_PASS')
-    email_to = os.environ.get('EMAIL_TO')
+    email_to = os.environ.get('RECIPIANT_EMAIL')
 
     if not all([email_host, email_port, email_user, email_pass, email_to]):
         return {"status": "erro", "mensagem": "Variáveis de ambiente do e-mail não configuradas."}
