@@ -56,6 +56,23 @@ class Presenca(db.Model):
     reuniao = db.relationship('Reuniao', back_populates='participantes')
 
 # --- Funções Auxiliares ---
+def _gerar_csv_content(reuniao):
+    """Função interna para gerar o conteúdo de um CSV a partir de uma reunião."""
+    output = io.StringIO()
+    # Colunas personalizadas conforme solicitado
+    fieldnames = ["nome", "cargo", "setor", "hora", "reuniao"]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for p in reuniao.participantes:
+        writer.writerow({
+            "nome": p.nome,
+            "cargo": p.cargo,
+            "setor": p.setor,
+            "hora": p.entrada.strftime("%d-%m-%Y %H:%M:%S"),
+            "reuniao": reuniao.descricao,
+            "reuniao_id": reuniao.id
+        })
+    return output.getvalue()
 def gerar_qrcode_base64(url):
     qr = qrcode.QRCode(
         version=1,
@@ -72,23 +89,17 @@ def gerar_qrcode_base64(url):
     img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
     return f"data:image/png;base64,{img_b64}"
 
-def gerar_e_enviar_relatorio_por_reuniao(meeting_id):
-    reuniao = db.session.get(Reuniao, meeting_id)
-    if not reuniao:
-        return {"status": "erro", "mensagem": "Reunião não encontrada."}
-
+def gerar_e_enviar_relatorio_por_reuniao(reuniao):
     reuniao.finalizada = True
     db.session.commit()
 
-    csv_header = "Nome,Cargo,Setor,Horario_Checkin\n"
-    csv_rows = [f"{p.nome},{p.cargo},{p.setor},{p.entrada.strftime('%Y-%m-%d %H:%M:%S')}\n" for p in reuniao.participantes]
-    csv_content = csv_header + "".join(csv_rows)
+    csv_content = _gerar_csv_content(reuniao)
 
     email_host = os.environ.get('EMAIL_HOST')
     email_port = int(os.environ.get('EMAIL_PORT', 587))
     email_user = os.environ.get('EMAIL_USER')
     email_pass = os.environ.get('EMAIL_PASS')
-    email_to = os.environ.get('RECIPIANT_EMAIL')
+    email_to = os.environ.get('RECIPIENT_EMAIL')
 
     if not all([email_host, email_port, email_user, email_pass, email_to]):
         return {"status": "erro", "mensagem": "Variáveis de ambiente do e-mail não configuradas."}
@@ -103,7 +114,7 @@ def gerar_e_enviar_relatorio_por_reuniao(meeting_id):
     part = MIMEBase('application', 'octet-stream')
     part.set_payload(csv_content.encode('utf-8'))
     encoders.encode_base64(part)
-    part.add_header('Content-Disposition', f'attachment; filename="relatorio_{meeting_id}.csv"')
+    part.add_header('Content-Disposition', f'attachment; filename="relatorio_{reuniao.id}.csv"')
     msg.attach(part)
 
     try:
@@ -118,6 +129,7 @@ def gerar_e_enviar_relatorio_por_reuniao(meeting_id):
     finally:
         if 'server' in locals() and server:
             server.quit()
+
 
 # --- Rotas da Aplicação ---
 @app.route("/", methods=["GET", "POST"])
@@ -165,28 +177,16 @@ def finalizar_reuniao(meeting_id):
 @app.route("/download/<meeting_id>")
 def download(meeting_id):
     reuniao_info = db.get_or_404(Reuniao, meeting_id)
-    presencas = db.session.execute(db.select(Presenca).filter_by(meeting_id=meeting_id)).scalars().all()
+    csv_content = _gerar_csv_content(reuniao_info)
     filename = f"presencas_reuniao_{meeting_id}.csv"
     
-    output = io.StringIO()
-    fieldnames = ["id", "nome", "cargo", "setor", "entrada", "meeting_id", "descricao_reuniao"]
-    writer = csv.DictWriter(output, fieldnames=fieldnames)
-    writer.writeheader()
-    for p in presencas:
-        writer.writerow({
-            "id": p.id, "nome": p.nome, "cargo": p.cargo, "setor": p.setor,
-            "entrada": p.entrada.strftime("%d-%m-%Y %H:%M:%S"),
-            "meeting_id": p.meeting_id, "descricao_reuniao": reuniao_info.descricao
-        })
-    
-    output.seek(0)
-    
     return send_file(
-        io.BytesIO(output.getvalue().encode('utf-8')),
+        io.BytesIO(csv_content.encode('utf-8')),
         mimetype='text/csv',
         as_attachment=True,
         download_name=filename
     )
+
 
 @app.route("/corrigir", methods=["GET"])
 def corrigir_colunas():
