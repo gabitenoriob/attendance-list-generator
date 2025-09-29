@@ -1,45 +1,59 @@
-from flask import Flask, jsonify, render_template, request, send_file, redirect, url_for
-import qrcode
 import uuid
-import csv
-from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
-import os
+import qrcode
+import io
 import base64
-from io import BytesIO
+import os
+import csv
+from flask import Flask, request, render_template, url_for, flash, redirect, send_file, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
+
+# --- Dependências para o envio de e-mail ---
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-from sqlalchemy import text
-from dbSettings.presenca_schema import Presenca
-from dbSettings.reuniao_schema import Reuniao
-from send_csv import gerar_e_enviar_relatorio_por_reuniao
-from flask import flash
-app = Flask(__name__)
-database_url = os.environ.get('DATABASE_URL')
-basedir = os.path.abspath(os.path.dirname(__file__))
 
+# --- Configuração da Aplicação Flask ---
+basedir = os.path.abspath(os.path.dirname(__file__))
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', '8b1ccb67567b424dd1823732035005f5')
+
+# --- Configuração de Banco de Dados mais Resiliente ---
 database_url = os.environ.get('DATABASE_URL')
 if database_url and database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
     if 'sslmode' not in database_url:
         database_url += "?sslmode=require"
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    # Adiciona resiliência à conexão, testando antes de usar.
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True}
 else:
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-bd = SQLAlchemy(app)
+db = SQLAlchemy(app)
 
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "8b1ccb67567b424dd1823732035005f5")
-bd.init_app(app)
-with app.app_context():
-    bd.create_all()
+# --- Modelos do Banco de Dados ---
+class Reuniao(db.Model):
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    descricao = db.Column(db.String(200), nullable=False)
+    data_criacao = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    finalizada = db.Column(db.Boolean, default=False)
+    participantes = db.relationship('Presenca', back_populates='reuniao', cascade="all, delete-orphan")
 
+class Presenca(db.Model):
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    nome = db.Column(db.String(100), nullable=False)
+    cargo = db.Column(db.String(100))
+    setor = db.Column(db.String(100))
+    entrada = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    meeting_id = db.Column(db.String(36), db.ForeignKey('reuniao.id'), nullable=False)
+    reuniao = db.relationship('Reuniao', back_populates='participantes')
+
+# --- Funções Auxiliares ---
 def gerar_qrcode_base64(url):
     qr = qrcode.QRCode(
         version=1,
@@ -51,90 +65,127 @@ def gerar_qrcode_base64(url):
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
     
-    buf = BytesIO()
+    buf = io.BytesIO()
     img.save(buf, format="PNG")
     img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
     return f"data:image/png;base64,{img_b64}"
 
+def gerar_e_enviar_relatorio_por_reuniao(meeting_id):
+    reuniao = db.session.get(Reuniao, meeting_id)
+    if not reuniao:
+        return {"status": "erro", "mensagem": "Reunião não encontrada."}
+
+    reuniao.finalizada = True
+    db.session.commit()
+
+    csv_header = "Nome,Cargo,Setor,Horario_Checkin\n"
+    csv_rows = [f"{p.nome},{p.cargo},{p.setor},{p.entrada.strftime('%Y-%m-%d %H:%M:%S')}\n" for p in reuniao.participantes]
+    csv_content = csv_header + "".join(csv_rows)
+
+    email_host = os.environ.get('EMAIL_HOST')
+    email_port = int(os.environ.get('EMAIL_PORT', 587))
+    email_user = os.environ.get('EMAIL_USER')
+    email_pass = os.environ.get('EMAIL_PASS')
+    email_to = os.environ.get('EMAIL_TO')
+
+    if not all([email_host, email_port, email_user, email_pass, email_to]):
+        return {"status": "erro", "mensagem": "Variáveis de ambiente do e-mail não configuradas."}
+
+    msg = MIMEMultipart()
+    msg['From'] = email_user
+    msg['To'] = email_to
+    msg['Subject'] = f"Relatório de Presença - {reuniao.descricao}"
+    body = f"Olá,\n\nSegue em anexo o relatório de presença para a reunião '{reuniao.descricao}'.\n\nTotal de participantes: {len(reuniao.participantes)}\n"
+    msg.attach(MIMEText(body, 'plain'))
+
+    part = MIMEBase('application', 'octet-stream')
+    part.set_payload(csv_content.encode('utf-8'))
+    encoders.encode_base64(part)
+    part.add_header('Content-Disposition', f'attachment; filename="relatorio_{meeting_id}.csv"')
+    msg.attach(part)
+
+    try:
+        server = smtplib.SMTP(email_host, email_port)
+        server.starttls()
+        server.login(email_user, email_pass)
+        server.sendmail(email_user, email_to, msg.as_string())
+        return {"status": "sucesso", "mensagem": f"Relatório da reunião '{reuniao.descricao}' enviado com sucesso!"}
+    except Exception as e:
+        app.logger.error(f"Falha ao enviar e-mail: {e}")
+        return {"status": "erro", "mensagem": f"Falha ao conectar com o servidor de e-mail. ({type(e).__name__})"}
+    finally:
+        if 'server' in locals() and server:
+            server.quit()
+
+# --- Rotas da Aplicação ---
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
-        descricao = request.form.get("descricao", "Reunião sem descrição")
-        
-        nova_reuniao = Reuniao(
-            id= str(uuid.uuid4()),
-            descricao=descricao,
-            data_criacao=datetime.now()
-        )
-        bd.session.add(nova_reuniao)
-        bd.session.commit()
-        
-        url = url_for('checkin', meeting_id=nova_reuniao.id, _external=True)
-        qrcode_b64 = gerar_qrcode_base64(url)
-        
+        descricao = request.form.get("descricao", "Reunião sem descrição").strip()
+        if not descricao: flash("A descrição da reunião não pode estar vazia.", "warning"); return redirect(url_for('index'))
+        # Deixa o modelo cuidar da data de criação usando o default=datetime.utcnow
+        nova_reuniao = Reuniao(descricao=descricao)
+        db.session.add(nova_reuniao)
+        db.session.commit()
+        qrcode_b64 = gerar_qrcode_base64(url_for('checkin', meeting_id=nova_reuniao.id, _external=True))
         return render_template("admin.html", meeting_id=nova_reuniao.id, descricao=descricao, qrcode=qrcode_b64)
-    
     reunioes = Reuniao.query.order_by(Reuniao.data_criacao.desc()).all()
-    
     return render_template("index.html", reunioes=reunioes)
 
 @app.route("/checkin/<meeting_id>", methods=["GET", "POST"])
 def checkin(meeting_id):
-    """Página de check-in para os participantes."""
-    reuniao_info = bd.get_or_404(Reuniao, meeting_id)
-
+    reuniao_info = db.get_or_404(Reuniao, meeting_id)
     if reuniao_info.finalizada:
         flash("Esta reunião já foi encerrada e não aceita mais check-ins.", "warning")
         return render_template("checkin_encerrado.html", descricao=reuniao_info.descricao)
-
     if request.method == "POST":
         nome = request.form.get("nome", "N/A").strip()
-        cargo = request.form.get("cargo", "N/A").strip()
-        setor = request.form.get("setor", "N/A").strip()
-
-        if not nome or nome == "N/A":
-            flash("O campo 'Nome' é obrigatório.", "danger")
-            return redirect(url_for('checkin', meeting_id=meeting_id))
-        
+        if not nome or nome == "N/A": flash("O campo 'Nome' é obrigatório.", "danger"); return redirect(url_for('checkin', meeting_id=meeting_id))
+        # Deixa o modelo cuidar da data de entrada usando o default=datetime.utcnow
         nova_presenca = Presenca(
-            nome=nome,
-            cargo=cargo,
-            setor=setor,
-            entrada=datetime.now(),
+            nome=nome, 
+            cargo=request.form.get("cargo", "N/A").strip(), 
+            setor=request.form.get("setor", "N/A").strip(), 
             meeting_id=meeting_id
         )
-        bd.session.add(nova_presenca)
-        bd.session.commit()
-        
+        db.session.add(nova_presenca)
+        db.session.commit()
         return render_template("success.html", nome=nome, descricao=reuniao_info.descricao)
-
     return render_template("checkin.html", meeting_id=meeting_id, descricao=reuniao_info.descricao)
+
+@app.route("/finalizar/<meeting_id>", methods=["POST"])
+def finalizar_reuniao(meeting_id):
+    resultado = gerar_e_enviar_relatorio_por_reuniao(meeting_id)
+    if resultado["status"] == "sucesso": flash(resultado["mensagem"], "success")
+    else: flash(f"Erro ao finalizar: {resultado['mensagem']}", "danger")
+    return redirect(url_for('index'))
 
 @app.route("/download/<meeting_id>")
 def download(meeting_id):
-    reuniao_info = bd.get_or_404(Reuniao, meeting_id)
-    
-    presencas = bd.session.execute(bd.select(Presenca).filter_by(meeting_id=meeting_id)).scalars().all()
-
+    reuniao_info = db.get_or_404(Reuniao, meeting_id)
+    presencas = db.session.execute(db.select(Presenca).filter_by(meeting_id=meeting_id)).scalars().all()
     filename = f"presencas_reuniao_{meeting_id}.csv"
     
-    with open(filename, "w", newline="", encoding="utf-8") as f:
-        fieldnames = ["id", "nome", "cargo", "setor", "entrada", "meeting_id", "descricao_reuniao"]
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        
-        for p in presencas:
-            writer.writerow({
-                "id": p.id,
-                "nome": p.nome,
-                "cargo": p.cargo,
-                "setor": p.setor,
-                "entrada": p.entrada.strftime("%d-%m-%Y %H:%M:%S"),
-                "meeting_id": p.meeting_id,
-                "descricao_reuniao": reuniao_info.descricao
-            })
+    output = io.StringIO()
+    fieldnames = ["id", "nome", "cargo", "setor", "entrada", "meeting_id", "descricao_reuniao"]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for p in presencas:
+        writer.writerow({
+            "id": p.id, "nome": p.nome, "cargo": p.cargo, "setor": p.setor,
+            "entrada": p.entrada.strftime("%d-%m-%Y %H:%M:%S"),
+            "meeting_id": p.meeting_id, "descricao_reuniao": reuniao_info.descricao
+        })
     
-    return send_file(filename, as_attachment=True)
+    output.seek(0)
+    
+    return send_file(
+        io.BytesIO(output.getvalue().encode('utf-8')),
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=filename
+    )
+
 @app.route("/corrigir", methods=["GET"])
 def corrigir_colunas():
     queries = [
@@ -144,32 +195,25 @@ def corrigir_colunas():
         "ALTER TABLE presenca ADD CONSTRAINT presenca_meeting_id_fkey FOREIGN KEY (meeting_id) REFERENCES reuniao(id)"
     ]
     try:
-        with bd.engine.begin() as conn: 
+        with db.engine.begin() as conn: 
             for q in queries:
                 conn.execute(text(q))
         return jsonify({"status": "sucesso", "mensagem": "Colunas ajustadas com sucesso!"}), 200
     except Exception as e:
         return jsonify({"status": "erro", "mensagem": str(e)}), 500
-    
+
 @app.route("/drop", methods=["GET"])
 def drop_tables():
     try:
-        with bd.engine.begin() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS presenca CASCADE"))
-            conn.execute(text("DROP TABLE IF EXISTS reuniao CASCADE"))
-        bd.create_all()
+        with app.app_context():
+            db.drop_all()
+            db.create_all()
         return jsonify({"status": "sucesso", "mensagem": "Tabelas removidas e recriadas com sucesso!"}), 200
     except Exception as e:
         return jsonify({"status": "erro", "mensagem": str(e)}), 500
-    
-@app.route("/finalizar/<meeting_id>", methods=["POST"])
-def finalizar_reuniao(meeting_id):
-    """Finaliza uma reunião e gera o relatório."""
-    resultado = gerar_e_enviar_relatorio_por_reuniao(meeting_id)
-    
-    if resultado["status"] == "sucesso":
-        flash(resultado["mensagem"], "success")
-    else:
-        flash(f"Erro ao finalizar: {resultado['mensagem']}", "danger")
-        
-    return redirect(url_for('index'))
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True)
+
