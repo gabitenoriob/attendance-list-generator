@@ -1,16 +1,33 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <title>Check-in Reunião</title>
-</head>
-<body>
-    <h1>Check-in da Reunião</h1>
-    <p><strong>Descrição:</strong> {{ descricao }}</p>
-    <form method="post">
-        Nome Completo: <input type="text" name="nome" required><br><br>
-        Cargo: <input type="text" name="cargo" required><br><br>
-        Setor: <input type="text" name="setor" required><br><br>
-        <button type="submit">Confirmar Presença</button>
-    </form>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block title %}Check-in de Reunião{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-10 flex justify-center">
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2">Registro de Presença</h1>
+        <p class="text-gray-600 mb-6">Você está fazendo check-in para a reunião:</p>
+        <div class="bg-gray-100 p-4 rounded-lg mb-6">
+            <p class="text-center font-semibold text-lg text-gray-700">{{ descricao }}</p>
+        </div>
+
+        <form action="{{ url_for('checkin', meeting_id=meeting_id) }}" method="POST">
+            <div class="mb-4">
+                <label for="nome" class="block text-gray-600 mb-2">Nome Completo</label>
+                <input type="text" id="nome" name="nome" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Seu nome" required>
+            </div>
+            <div class="mb-4">
+                <label for="cargo" class="block text-gray-600 mb-2">Cargo</label>
+                <input type="text" id="cargo" name="cargo" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Seu cargo (opcional)">
+            </div>
+            <div class="mb-6">
+                <label for="setor" class="block text-gray-600 mb-2">Setor</label>
+                <input type="text" id="setor" name="setor" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Seu setor (opcional)">
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
+                Confirmar Presença
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Gerenciador de Reuniões{% endblock %}</title>
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans">
+    
+    <!-- Container para mensagens flash -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="absolute top-5 right-5 z-50">
+            {% for category, message in messages %}
+                <div class="px-6 py-3 rounded-lg shadow-md mb-2
+                    {% if category == 'success' %} bg-green-500 text-white 
+                    {% elif category == 'danger' %} bg-red-500 text-white
+                    {% elif category == 'warning' %} bg-yellow-400 text-black
+                    {% else %} bg-blue-500 text-white 
+                    {% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+</body>
+</html>

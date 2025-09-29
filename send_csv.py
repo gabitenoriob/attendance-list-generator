@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 import smtplib
 import pandas as pd
@@ -7,71 +8,78 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from dotenv import load_dotenv
-
+import pandas as pd
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+from dbSettings.database import db
+from dbSettings.reuniao_schema import Reuniao
+from dbSettings.presenca_schema import Presenca
 load_dotenv()
 
-def gerar_e_enviar_relatorio():
+def gerar_e_enviar_relatorio_por_reuniao(meeting_id):
+    """
+    Busca os dados de uma reunião específica, gera um CSV e o envia por e-mail.
+    """
     try:
-        conn = psycopg2.connect(os.getenv('DATABASE_URL'))
-        print("Conectado ao banco de dados!")
+        # Busca a reunião e as presenças associadas usando SQLAlchemy
+        reuniao = db.get_or_404(Reuniao, meeting_id)
+        presencas = db.session.execute(db.select(Presenca).filter_by(meeting_id=meeting_id)).scalars().all()
 
-        # Query para pegar os dados da reunião do dia atual
-        query = """
-            SELECT nome, email, outros_dados 
-            FROM participantes 
-            WHERE DATE(data_criacao) = CURRENT_DATE;
-        """
+        if not presencas:
+            print(f"Nenhuma presença encontrada para a reunião {meeting_id}.")
+            return {"status": "info", "mensagem": "Nenhuma presença para gerar relatório."}
+
+        # Converte os dados para um formato que o Pandas entende (lista de dicionários)
+        dados_para_df = []
+        for p in presencas:
+            dados_para_df.append({
+                "nome": p.nome,
+                "cargo": p.cargo,
+                "setor": p.setor,
+                "entrada": p.entrada.strftime("%d-%m-%Y %H:%M:%S"),
+                "descricao_reuniao": reuniao.descricao
+            })
         
-        # Usando pandas para ler os dados e criar o CSV
-        df = pd.read_sql(query, conn)
+        df = pd.DataFrame(dados_para_df)
         
-        if df.empty:
-            print("Nenhum dado de reunião encontrado para hoje.")
-            return
+        # --- Geração do CSV em memória ---
+        # Não precisamos mais salvar o arquivo no disco
+        csv_output = df.to_csv(index=False, encoding='utf-8')
+        
+        # Obter a data para o nome do arquivo e assunto do e-mail
+        hoje = datetime.now().strftime('%Y-%m-%d')
+        nome_arquivo = f"relatorio_{reuniao.descricao.replace(' ', '_')}_{hoje}.csv"
 
-        # Obter a data atual para o nome do arquivo e assunto do e-mail
-        hoje = pd.to_datetime('today').strftime('%Y-%m-%d')
-        nome_arquivo = f"relatorio_reuniao_{hoje}.csv"
-
-        # Configurar o e-mail
+        # --- Configuração e Envio do E-mail ---
         msg = MIMEMultipart()
         msg['From'] = os.getenv('EMAIL_USER')
         msg['To'] = os.getenv('RECIPIENT_EMAIL')
-        msg['Subject'] = f"Relatório de Reunião - {hoje}"
+        msg['Subject'] = f"Relatório da Reunião: {reuniao.descricao}"
         
-        body = "Em anexo, o relatório diário de participantes da reunião."
+        body = f"Em anexo, o relatório de presença para a reunião '{reuniao.descricao}' finalizada em {hoje}."
         msg.attach(MIMEText(body, 'plain'))
 
         # Anexar o arquivo CSV
-        with pd.ExcelWriter(nome_arquivo, engine='xlsxwriter') as writer:
-             df.to_excel(writer, index=False)
-        
-        attachment = open(nome_arquivo, "rb")
-
         part = MIMEBase('application', 'octet-stream')
-        part.set_payload((attachment).read())
+        part.set_payload(csv_output.encode('utf-8'))
         encoders.encode_base64(part)
-        part.add_header('Content-Disposition', "attachment; filename= %s" % nome_arquivo)
+        part.add_header('Content-Disposition', f"attachment; filename={nome_arquivo}")
         msg.attach(part)
 
         # Enviar o e-mail
-        server = smtplib.SMTP(os.getenv('EMAIL_HOST'), os.getenv('EMAIL_PORT'))
+        server = smtplib.SMTP(os.getenv('EMAIL_HOST'), int(os.getenv('EMAIL_PORT')))
         server.starttls()
         server.login(os.getenv('EMAIL_USER'), os.getenv('EMAIL_PASS'))
         text = msg.as_string()
         server.sendmail(os.getenv('EMAIL_USER'), os.getenv('RECIPIENT_EMAIL'), text)
         server.quit()
 
-        print("E-mail com o relatório enviado com sucesso!")
+        print(f"E-mail com o relatório da reunião {meeting_id} enviado com sucesso!")
+        return {"status": "sucesso", "mensagem": "Relatório enviado com sucesso!"}
 
     except Exception as e:
-        print(f"Ocorreu um erro: {e}")
-    finally:
-        if 'conn' in locals() and conn is not None:
-            conn.close()
-        # Remover o arquivo CSV local após o envio (opcional)
-        if os.path.exists(nome_arquivo):
-            os.remove(nome_arquivo)
-
-if __name__ == '__main__':
-    gerar_e_enviar_relatorio()
+        print(f"Ocorreu um erro ao gerar/enviar relatório para a reunião {meeting_id}: {e}")
+        return {"status": "erro", "mensagem": str(e)}

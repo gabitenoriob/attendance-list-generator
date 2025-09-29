@@ -12,8 +12,11 @@ from sqlalchemy import text
 from dbSettings.presenca_schema import Presenca
 from dbSettings.reuniao_schema import Reuniao
 from dbSettings.database import db
+from send_csv import gerar_e_enviar_relatorio_por_reuniao
+from flask import flash
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "8b1ccb67567b424dd1823732035005f5")
 db.init_app(app)
 with app.app_context():
     db.create_all()
@@ -52,31 +55,38 @@ def index():
         
         return render_template("admin.html", meeting_id=nova_reuniao.id, descricao=descricao, qrcode=qrcode_b64)
     
-    reunioes = db.session.execute(db.select(Reuniao)).scalars().all()
+    reunioes = Reuniao.query.order_by(Reuniao.data_criacao.desc()).all()
     
     return render_template("index.html", reunioes=reunioes)
 
 @app.route("/checkin/<meeting_id>", methods=["GET", "POST"])
 def checkin(meeting_id):
+    """Página de check-in para os participantes."""
     reuniao_info = db.get_or_404(Reuniao, meeting_id)
 
+    if reuniao_info.finalizada:
+        flash("Esta reunião já foi encerrada e não aceita mais check-ins.", "warning")
+        return render_template("checkin_encerrado.html", descricao=reuniao_info.descricao)
+
     if request.method == "POST":
-        nome = request.form.get("nome", "N/A")
-        cargo = request.form.get("cargo", "N/A")
-        setor = request.form.get("setor", "N/A")
+        nome = request.form.get("nome", "N/A").strip()
+        cargo = request.form.get("cargo", "N/A").strip()
+        setor = request.form.get("setor", "N/A").strip()
+
+        if not nome or nome == "N/A":
+            flash("O campo 'Nome' é obrigatório.", "danger")
+            return redirect(url_for('checkin', meeting_id=meeting_id))
         
         nova_presenca = Presenca(
-            id=str(uuid.uuid4()),
             nome=nome,
             cargo=cargo,
             setor=setor,
-            entrada=datetime.now(),
             meeting_id=meeting_id
         )
         db.session.add(nova_presenca)
         db.session.commit()
         
-        return render_template("success.html", nome=nome, meeting_id=meeting_id)
+        return render_template("success.html", nome=nome, descricao=reuniao_info.descricao)
 
     return render_template("checkin.html", meeting_id=meeting_id, descricao=reuniao_info.descricao)
 
@@ -131,3 +141,15 @@ def drop_tables():
         return jsonify({"status": "sucesso", "mensagem": "Tabelas removidas e recriadas com sucesso!"}), 200
     except Exception as e:
         return jsonify({"status": "erro", "mensagem": str(e)}), 500
+    
+@app.route("/finalizar/<meeting_id>", methods=["POST"])
+def finalizar_reuniao(meeting_id):
+    """Finaliza uma reunião e gera o relatório."""
+    resultado = gerar_e_enviar_relatorio_por_reuniao(meeting_id)
+    
+    if resultado["status"] == "sucesso":
+        flash(resultado["mensagem"], "success")
+    else:
+        flash(f"Erro ao finalizar: {resultado['mensagem']}", "danger")
+        
+    return redirect(url_for('index'))

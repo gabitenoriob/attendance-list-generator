@@ -1,30 +1,51 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <title>Admin - Reuniões</title>
-</head>
-<body>
-    <h1>Iniciar Nova Reunião</h1>
-    <form method="post">
-        Descrição da Reunião: <input type="text" name="descricao" required>
-        <button type="submit">Iniciar Reunião</button>
-    </form>
+{% extends "base.html" %}
 
-    <hr>
+{% block title %}Gerenciador de Reuniões{% endblock %}
 
-    <h2>Reuniões Ativas</h2>
-    {% if reunioes %}
-        <ul>
-        {% for reuniao in reunioes %}
-            <li>
-                ID: {{ reuniao.id }} - Descrição: {{ reuniao.descricao }} -
-                <a href="{{ url_for('checkin', meeting_id=reuniao.id) }}">Link Check-in</a> -
-                <a href="{{ url_for('download', meeting_id=reuniao.id) }}">Baixar CSV</a>
-            </li>
-        {% endfor %}
-        </ul>
-    {% else %}
-        <p>Nenhuma reunião em andamento.</p>
-    {% endif %}
-</body>
-</html>
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+
+    <h1 class="text-4xl font-bold text-gray-800 mb-6 text-center">Gerenciador de Reuniões</h1>
+
+    <!-- Seção para criar nova reunião -->
+    <div class="bg-white p-6 rounded-xl shadow-lg mb-8 max-w-2xl mx-auto">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">Criar Nova Reunião</h2>
+        <form action="/" method="POST">
+            <div class="mb-4">
+                <label for="descricao" class="block text-gray-600 mb-2">Descrição da Reunião</label>
+                <input type="text" id="descricao" name="descricao" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ex: Reunião de Alinhamento Semanal" required>
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
+                Criar e Gerar QR Code
+            </button>
+        </form>
+    </div>
+
+    <!-- Seção para listar reuniões existentes -->
+    <div class="bg-white p-6 rounded-xl shadow-lg max-w-4xl mx-auto">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">Histórico de Reuniões</h2>
+        <div class="space-y-4">
+            {% if reunioes %}
+                {% for reuniao in reunioes %}
+                <div class="border p-4 rounded-lg flex justify-between items-center {% if reuniao.finalizada %}bg-gray-100 opacity-70{% endif %}">
+                    <div>
+                        <p class="font-bold text-lg text-gray-800">{{ reuniao.descricao }}</p>
+                        <p class="text-sm text-gray-500">Criada em: {{ reuniao.data_criacao.strftime('%d/%m/%Y às %H:%M') }}</p>
+                        <p class="text-sm text-gray-500">Participantes: {{ reuniao.participantes|length }}</p>
+                    </div>
+                    <div>
+                        {% if reuniao.finalizada %}
+                            <span class="px-3 py-1 text-sm font-semibold text-red-700 bg-red-100 rounded-full">Encerrada</span>
+                        {% else %}
+                            <span class="px-3 py-1 text-sm font-semibold text-green-700 bg-green-100 rounded-full">Ativa</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-gray-500 text-center">Nenhuma reunião foi criada ainda.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
