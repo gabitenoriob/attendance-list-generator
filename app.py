@@ -169,10 +169,16 @@ def checkin(meeting_id):
 
 @app.route("/finalizar/<meeting_id>", methods=["POST"])
 def finalizar_reuniao(meeting_id):
-    resultado = gerar_e_enviar_relatorio_por_reuniao(meeting_id)
-    if resultado["status"] == "sucesso": flash(resultado["mensagem"], "success")
-    else: flash(f"Erro ao finalizar: {resultado['mensagem']}", "danger")
-    return redirect(url_for('index'))
+    reuniao = db.get_or_404(Reuniao, meeting_id) 
+    
+    resultado = gerar_e_enviar_relatorio_por_reuniao(reuniao) 
+    
+    if resultado["status"] == "sucesso":
+        flash(resultado["mensagem"], "success")
+        return render_template("finish.html", reuniao=reuniao) 
+    else:
+        flash(f"Erro ao finalizar: {resultado['mensagem']}", "danger")
+        return redirect(url_for('index'))
 
 @app.route("/download/<meeting_id>")
 def download(meeting_id):
