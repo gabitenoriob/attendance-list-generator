@@ -28,7 +28,6 @@ if database_url and database_url.startswith("postgres://"):
     if 'sslmode' not in database_url:
         database_url += "?sslmode=require"
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    # Adiciona resiliência à conexão, testando antes de usar.
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True}
 else:
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
@@ -38,7 +37,6 @@ db = SQLAlchemy(app)
 
 # --- Modelos do Banco de Dados ---
 class Reuniao(db.Model):
-    __tablename__ = 'reuniao'
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     descricao = db.Column(db.String(200), nullable=False)
     data_criacao = db.Column(db.DateTime, nullable=False, default=datetime.now())
@@ -46,20 +44,23 @@ class Reuniao(db.Model):
     participantes = db.relationship('Presenca', back_populates='reuniao', cascade="all, delete-orphan")
 
 class Presenca(db.Model):
-    __tablename__ = 'presenca'
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     nome = db.Column(db.String(100), nullable=False)
     cargo = db.Column(db.String(100))
     setor = db.Column(db.String(100))
+    # Usar UTC para timestamps no servidor é a melhor prática
     entrada = db.Column(db.DateTime, nullable=False, default=datetime.now())
     meeting_id = db.Column(db.String(36), db.ForeignKey('reuniao.id'), nullable=False)
     reuniao = db.relationship('Reuniao', back_populates='participantes')
+
+
+with app.app_context():
+    db.create_all()
 
 # --- Funções Auxiliares ---
 def _gerar_csv_content(reuniao):
     """Função interna para gerar o conteúdo de um CSV a partir de uma reunião."""
     output = io.StringIO()
-    # Colunas personalizadas conforme solicitado
     fieldnames = ["nome", "cargo", "setor", "hora", "reuniao"]
     writer = csv.DictWriter(output, fieldnames=fieldnames)
     writer.writeheader()
@@ -69,21 +70,15 @@ def _gerar_csv_content(reuniao):
             "cargo": p.cargo,
             "setor": p.setor,
             "hora": p.entrada.strftime("%d-%m-%Y %H:%M:%S"),
-            "reuniao": reuniao.descricao,
-            "reuniao_id": reuniao.id
+            "reuniao": reuniao.descricao
         })
     return output.getvalue()
+
 def gerar_qrcode_base64(url):
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4,
-    )
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
     qr.add_data(url)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
-    
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
@@ -130,14 +125,12 @@ def gerar_e_enviar_relatorio_por_reuniao(reuniao):
         if 'server' in locals() and server:
             server.quit()
 
-
 # --- Rotas da Aplicação ---
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
         descricao = request.form.get("descricao", "Reunião sem descrição").strip()
         if not descricao: flash("A descrição da reunião não pode estar vazia.", "warning"); return redirect(url_for('index'))
-        # Deixa o modelo cuidar da data de criação usando o default=datetime.utcnow
         nova_reuniao = Reuniao(descricao=descricao)
         db.session.add(nova_reuniao)
         db.session.commit()
@@ -155,11 +148,10 @@ def checkin(meeting_id):
     if request.method == "POST":
         nome = request.form.get("nome", "N/A").strip()
         if not nome or nome == "N/A": flash("O campo 'Nome' é obrigatório.", "danger"); return redirect(url_for('checkin', meeting_id=meeting_id))
-        # Deixa o modelo cuidar da data de entrada usando o default=datetime.utcnow
         nova_presenca = Presenca(
-            nome=nome, 
-            cargo=request.form.get("cargo", "N/A").strip(), 
-            setor=request.form.get("setor", "N/A").strip(), 
+            nome=nome,
+            cargo=request.form.get("cargo", "N/A").strip(),
+            setor=request.form.get("setor", "N/A").strip(),
             meeting_id=meeting_id
         )
         db.session.add(nova_presenca)
@@ -169,13 +161,11 @@ def checkin(meeting_id):
 
 @app.route("/finalizar/<meeting_id>", methods=["POST"])
 def finalizar_reuniao(meeting_id):
-    reuniao = db.get_or_404(Reuniao, meeting_id) 
-    
-    resultado = gerar_e_enviar_relatorio_por_reuniao(reuniao) 
-    
+    reuniao = db.get_or_404(Reuniao, meeting_id)
+    resultado = gerar_e_enviar_relatorio_por_reuniao(reuniao)
     if resultado["status"] == "sucesso":
         flash(resultado["mensagem"], "success")
-        return render_template("finish.html", reuniao=reuniao) 
+        return render_template("finalizada.html", reuniao=reuniao)
     else:
         flash(f"Erro ao finalizar: {resultado['mensagem']}", "danger")
         return redirect(url_for('index'))
@@ -185,30 +175,13 @@ def download(meeting_id):
     reuniao_info = db.get_or_404(Reuniao, meeting_id)
     csv_content = _gerar_csv_content(reuniao_info)
     filename = f"presencas_reuniao_{meeting_id}.csv"
-    
+
     return send_file(
         io.BytesIO(csv_content.encode('utf-8')),
         mimetype='text/csv',
         as_attachment=True,
         download_name=filename
     )
-
-
-@app.route("/corrigir", methods=["GET"])
-def corrigir_colunas():
-    queries = [
-        "ALTER TABLE presenca DROP CONSTRAINT IF EXISTS presenca_meeting_id_fkey",
-        "ALTER TABLE reuniao ALTER COLUMN id TYPE UUID USING id::uuid",
-        "ALTER TABLE presenca ALTER COLUMN meeting_id TYPE UUID USING meeting_id::uuid",
-        "ALTER TABLE presenca ADD CONSTRAINT presenca_meeting_id_fkey FOREIGN KEY (meeting_id) REFERENCES reuniao(id)"
-    ]
-    try:
-        with db.engine.begin() as conn: 
-            for q in queries:
-                conn.execute(text(q))
-        return jsonify({"status": "sucesso", "mensagem": "Colunas ajustadas com sucesso!"}), 200
-    except Exception as e:
-        return jsonify({"status": "erro", "mensagem": str(e)}), 500
 
 @app.route("/drop", methods=["GET"])
 def drop_tables():
@@ -221,7 +194,5 @@ def drop_tables():
         return jsonify({"status": "erro", "mensagem": str(e)}), 500
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)
 
