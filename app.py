@@ -38,6 +38,7 @@ db = SQLAlchemy(app)
 
 # --- Modelos do Banco de Dados ---
 class Reuniao(db.Model):
+    __tablename__ = 'reuniao'
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     descricao = db.Column(db.String(200), nullable=False)
     data_criacao = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -45,6 +46,7 @@ class Reuniao(db.Model):
     participantes = db.relationship('Presenca', back_populates='reuniao', cascade="all, delete-orphan")
 
 class Presenca(db.Model):
+    __tablename__ = 'presenca'
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     nome = db.Column(db.String(100), nullable=False)
     cargo = db.Column(db.String(100))
