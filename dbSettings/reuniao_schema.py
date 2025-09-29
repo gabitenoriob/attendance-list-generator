@@ -9,3 +9,5 @@ class Reuniao(db.Model):
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     descricao = db.Column(db.String(255), nullable=False)
     data_criacao = db.Column(db.DateTime, default=datetime.now)
+    finalizada = db.Column(db.Boolean, default=False)
+    participantes = db.relationship('Presenca', backref='reuniao', lazy=True, cascade="all, delete-orphan")
