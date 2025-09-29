@@ -1,15 +1,12 @@
+import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-
-from flask import app
-from dbSettings.database import db
+from dbSettings.presenca_schema import Presenca
 from dbSettings.reuniao_schema import Reuniao
-import os
-from io import StringIO
-from datetime import datetime
+from app import db, app
 def gerar_e_enviar_relatorio_por_reuniao(meeting_id):
     reuniao = db.session.get(Reuniao, meeting_id)
     if not reuniao:

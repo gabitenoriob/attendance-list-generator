@@ -15,7 +15,6 @@ from email import encoders
 from sqlalchemy import text
 from dbSettings.presenca_schema import Presenca
 from dbSettings.reuniao_schema import Reuniao
-from dbSettings.database import db
 from send_csv import gerar_e_enviar_relatorio_por_reuniao
 from flask import flash
 app = Flask(__name__)
@@ -28,7 +27,6 @@ if database_url and database_url.startswith("postgres://"):
     if 'sslmode' not in database_url:
         database_url += "?sslmode=require"
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    # Adiciona resiliência à conexão, testando antes de usar.
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True}
 else:
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
