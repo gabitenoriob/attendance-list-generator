@@ -32,13 +32,13 @@ else:
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+bd = SQLAlchemy(app)
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "8b1ccb67567b424dd1823732035005f5")
-db.init_app(app)
+bd.init_app(app)
 with app.app_context():
-    db.create_all()
+    bd.create_all()
 
 def gerar_qrcode_base64(url):
     qr = qrcode.QRCode(
@@ -66,8 +66,8 @@ def index():
             descricao=descricao,
             data_criacao=datetime.now()
         )
-        db.session.add(nova_reuniao)
-        db.session.commit()
+        bd.session.add(nova_reuniao)
+        bd.session.commit()
         
         url = url_for('checkin', meeting_id=nova_reuniao.id, _external=True)
         qrcode_b64 = gerar_qrcode_base64(url)
@@ -81,7 +81,7 @@ def index():
 @app.route("/checkin/<meeting_id>", methods=["GET", "POST"])
 def checkin(meeting_id):
     """Página de check-in para os participantes."""
-    reuniao_info = db.get_or_404(Reuniao, meeting_id)
+    reuniao_info = bd.get_or_404(Reuniao, meeting_id)
 
     if reuniao_info.finalizada:
         flash("Esta reunião já foi encerrada e não aceita mais check-ins.", "warning")
@@ -103,8 +103,8 @@ def checkin(meeting_id):
             entrada=datetime.now(),
             meeting_id=meeting_id
         )
-        db.session.add(nova_presenca)
-        db.session.commit()
+        bd.session.add(nova_presenca)
+        bd.session.commit()
         
         return render_template("success.html", nome=nome, descricao=reuniao_info.descricao)
 
@@ -112,9 +112,9 @@ def checkin(meeting_id):
 
 @app.route("/download/<meeting_id>")
 def download(meeting_id):
-    reuniao_info = db.get_or_404(Reuniao, meeting_id)
+    reuniao_info = bd.get_or_404(Reuniao, meeting_id)
     
-    presencas = db.session.execute(db.select(Presenca).filter_by(meeting_id=meeting_id)).scalars().all()
+    presencas = bd.session.execute(bd.select(Presenca).filter_by(meeting_id=meeting_id)).scalars().all()
 
     filename = f"presencas_reuniao_{meeting_id}.csv"
     
@@ -144,7 +144,7 @@ def corrigir_colunas():
         "ALTER TABLE presenca ADD CONSTRAINT presenca_meeting_id_fkey FOREIGN KEY (meeting_id) REFERENCES reuniao(id)"
     ]
     try:
-        with db.engine.begin() as conn: 
+        with bd.engine.begin() as conn: 
             for q in queries:
                 conn.execute(text(q))
         return jsonify({"status": "sucesso", "mensagem": "Colunas ajustadas com sucesso!"}), 200
@@ -154,10 +154,10 @@ def corrigir_colunas():
 @app.route("/drop", methods=["GET"])
 def drop_tables():
     try:
-        with db.engine.begin() as conn:
+        with bd.engine.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS presenca CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS reuniao CASCADE"))
-        db.create_all()
+        bd.create_all()
         return jsonify({"status": "sucesso", "mensagem": "Tabelas removidas e recriadas com sucesso!"}), 200
     except Exception as e:
         return jsonify({"status": "erro", "mensagem": str(e)}), 500

@@ -6,15 +6,15 @@ from email.mime.base import MIMEBase
 from email import encoders
 from dbSettings.presenca_schema import Presenca
 from dbSettings.reuniao_schema import Reuniao
-from app import db, app
+from app import bd, app
 def gerar_e_enviar_relatorio_por_reuniao(meeting_id):
-    reuniao = db.session.get(Reuniao, meeting_id)
+    reuniao = bd.session.get(Reuniao, meeting_id)
     if not reuniao:
         return {"status": "erro", "mensagem": "Reunião não encontrada."}
 
     # Marca a reunião como finalizada
     reuniao.finalizada = True
-    db.session.commit()
+    bd.session.commit()
 
     # Gera o conteúdo do CSV em memória
     csv_header = "Nome,Cargo,Setor,Horario_Checkin\n"
