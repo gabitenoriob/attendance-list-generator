@@ -81,6 +81,7 @@ def checkin(meeting_id):
             nome=nome,
             cargo=cargo,
             setor=setor,
+            entrada=datetime.now(datetime.timezone.utc),
             meeting_id=meeting_id
         )
         db.session.add(nova_presenca)
