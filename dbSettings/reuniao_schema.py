@@ -10,4 +10,4 @@ class Reuniao(db.Model):
     descricao = db.Column(db.String(255), nullable=False)
     data_criacao = db.Column(db.DateTime, default=datetime.now)
     finalizada = db.Column(db.Boolean, default=False)
-    participantes = db.relationship('Presenca', backref='reuniao', lazy=True, cascade="all, delete-orphan")
+    participantes = db.relationship('Presenca', back_populates='reuniao', cascade="all, delete-orphan")

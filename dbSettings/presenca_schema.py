@@ -11,4 +11,4 @@ class Presenca(db.Model):
     setor = db.Column(db.String(100), nullable=False)
     entrada = db.Column(db.DateTime, nullable=False)
     meeting_id = db.Column(UUID(as_uuid=True), db.ForeignKey('reuniao.id'), nullable=False)
-    reuniao = db.relationship('Reuniao', backref=db.backref('presenca', lazy=True))
+    reuniao = db.relationship('Reuniao', back_populates='participantes')
