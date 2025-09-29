@@ -15,7 +15,25 @@ from dbSettings.database import db
 from send_csv import gerar_e_enviar_relatorio_por_reuniao
 from flask import flash
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+database_url = os.environ.get('DATABASE_URL')
+basedir = os.path.abspath(os.path.dirname(__file__))
+
+# Se a DATABASE_URL existir, é PostgreSQL. Se não, usa SQLite local.
+if database_url:
+    # Garante que o driver seja o correto para o SQLAlchemy
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    # A MÁGICA ACONTECE AQUI: Adiciona o sslmode=require se não estiver presente
+    if 'sslmode' not in database_url:
+        database_url += "?sslmode=require"
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:
+    # Fallback para desenvolvimento local com SQLite
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "8b1ccb67567b424dd1823732035005f5")
 db.init_app(app)
 with app.app_context():
