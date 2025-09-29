@@ -41,7 +41,7 @@ class Reuniao(db.Model):
     __tablename__ = 'reuniao'
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     descricao = db.Column(db.String(200), nullable=False)
-    data_criacao = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    data_criacao = db.Column(db.DateTime, nullable=False, default=datetime.now())
     finalizada = db.Column(db.Boolean, default=False)
     participantes = db.relationship('Presenca', back_populates='reuniao', cascade="all, delete-orphan")
 
@@ -51,7 +51,7 @@ class Presenca(db.Model):
     nome = db.Column(db.String(100), nullable=False)
     cargo = db.Column(db.String(100))
     setor = db.Column(db.String(100))
-    entrada = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    entrada = db.Column(db.DateTime, nullable=False, default=datetime.now())
     meeting_id = db.Column(db.String(36), db.ForeignKey('reuniao.id'), nullable=False)
     reuniao = db.relationship('Reuniao', back_populates='participantes')
 
