@@ -7,7 +7,11 @@ from datetime import datetime
 import os
 import base64
 from io import BytesIO
-
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from sqlalchemy import text
 from dbSettings.presenca_schema import Presenca
 from dbSettings.reuniao_schema import Reuniao
@@ -18,20 +22,19 @@ app = Flask(__name__)
 database_url = os.environ.get('DATABASE_URL')
 basedir = os.path.abspath(os.path.dirname(__file__))
 
-# Se a DATABASE_URL existir, é PostgreSQL. Se não, usa SQLite local.
-if database_url:
-    # Garante que o driver seja o correto para o SQLAlchemy
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-    
-    # A MÁGICA ACONTECE AQUI: Adiciona o sslmode=require se não estiver presente
+database_url = os.environ.get('DATABASE_URL')
+if database_url and database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
     if 'sslmode' not in database_url:
         database_url += "?sslmode=require"
-    
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    # Adiciona resiliência à conexão, testando antes de usar.
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True}
 else:
-    # Fallback para desenvolvimento local com SQLite
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "8b1ccb67567b424dd1823732035005f5")
