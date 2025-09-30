@@ -84,10 +84,8 @@ def gerar_qrcode_base64(url):
     img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
     return f"data:image/png;base64,{img_b64}"
 
-def gerar_e_enviar_relatorio_por_reuniao(reuniao):
-    reuniao.finalizada = True
-    db.session.commit()
-
+def enviar_email_com_relatorio(reuniao):
+    """Tenta enviar o relatório por e-mail e retorna o status."""
     csv_content = _gerar_csv_content(reuniao)
 
     email_host = os.environ.get('EMAIL_HOST')
@@ -112,17 +110,18 @@ def gerar_e_enviar_relatorio_por_reuniao(reuniao):
     part.add_header('Content-Disposition', f'attachment; filename="relatorio_{reuniao.id}.csv"')
     msg.attach(part)
 
+    server = None
     try:
-        server = smtplib.SMTP(email_host, email_port)
+        server = smtplib.SMTP(email_host, email_port, timeout=15)
         server.starttls()
         server.login(email_user, email_pass)
         server.sendmail(email_user, email_to, msg.as_string())
         return {"status": "sucesso", "mensagem": f"Relatório da reunião '{reuniao.descricao}' enviado com sucesso!"}
     except Exception as e:
         app.logger.error(f"Falha ao enviar e-mail: {e}")
-        return {"status": "erro", "mensagem": f"Falha ao conectar com o servidor de e-mail. ({type(e).__name__})"}
+        return {"status": "erro", "mensagem": f"O envio do e-mail falhou, mas você ainda pode baixar o relatório. (Erro: {type(e).__name__})"}
     finally:
-        if 'server' in locals() and server:
+        if server:
             server.quit()
 
 # --- Rotas da Aplicação ---
@@ -162,13 +161,19 @@ def checkin(meeting_id):
 @app.route("/finalizar/<meeting_id>", methods=["POST"])
 def finalizar_reuniao(meeting_id):
     reuniao = db.get_or_404(Reuniao, meeting_id)
-    resultado = gerar_e_enviar_relatorio_por_reuniao(reuniao)
-    if resultado["status"] == "sucesso":
-        flash(resultado["mensagem"], "success")
-        return render_template("finalizada.html", reuniao=reuniao)
+    
+    if not reuniao.finalizada:
+        reuniao.finalizada = True
+        db.session.commit()
+    
+    resultado_email = enviar_email_com_relatorio(reuniao)
+    
+    if resultado_email["status"] == "sucesso":
+        flash(resultado_email["mensagem"], "success")
     else:
-        flash(f"Erro ao finalizar: {resultado['mensagem']}", "danger")
-        return redirect(url_for('index'))
+        flash(resultado_email["mensagem"], "warning")
+
+    return render_template("finalizada.html", reuniao=reuniao)
 
 @app.route("/download/<meeting_id>")
 def download(meeting_id):
