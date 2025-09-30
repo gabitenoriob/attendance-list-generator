@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+import pytz
 import qrcode
 import io
 import base64
@@ -58,18 +59,29 @@ with app.app_context():
     db.create_all()
 
 # --- Funções Auxiliares ---
+@app.template_filter('localtime')
+def localtime_filter(dt):
+    """Converte uma data UTC para o fuso horário de São Paulo."""
+    if dt is None:
+        return ""
+    sao_paulo_tz = pytz.timezone('America/Sao_Paulo')
+    if dt.tzinfo is None:
+        dt = pytz.utc.localize(dt)
+    return dt.astimezone(sao_paulo_tz).strftime('%d/%m/%Y %H:%M:%S')
 def _gerar_csv_content(reuniao):
-    """Função interna para gerar o conteúdo de um CSV a partir de uma reunião."""
+    sao_paulo_tz = pytz.timezone('America/Sao_Paulo')
     output = io.StringIO()
     fieldnames = ["nome", "cargo", "setor", "hora", "reuniao"]
     writer = csv.DictWriter(output, fieldnames=fieldnames)
     writer.writeheader()
     for p in reuniao.participantes:
+        entrada_utc = p.entrada
+        if entrada_utc.tzinfo is None:
+            entrada_utc = pytz.utc.localize(entrada_utc)
+        entrada_local = entrada_utc.astimezone(sao_paulo_tz)
         writer.writerow({
-            "nome": p.nome,
-            "cargo": p.cargo,
-            "setor": p.setor,
-            "hora": p.entrada.strftime("%d-%m-%Y %H:%M:%S"),
+            "nome": p.nome, "cargo": p.cargo, "setor": p.setor,
+            "hora": entrada_local.strftime("%d-%m-%Y %H:%M:%S"),
             "reuniao": reuniao.descricao
         })
     return output.getvalue()
