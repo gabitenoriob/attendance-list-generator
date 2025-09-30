@@ -173,7 +173,7 @@ def finalizar_reuniao(meeting_id):
     else:
         flash(resultado_email["mensagem"], "warning")
 
-    return render_template("finalizada.html", reuniao=reuniao)
+    return render_template("finish.html", reuniao=reuniao)
 
 @app.route("/download/<meeting_id>")
 def download(meeting_id):
