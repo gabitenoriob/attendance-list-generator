@@ -172,6 +172,8 @@ def finalizar_reuniao(meeting_id):
         flash(resultado_email["mensagem"], "success")
     else:
         flash(resultado_email["mensagem"], "warning")
+        # Se o envio do e-mail falhar, o usuário ainda pode baixar o relatório.
+        return redirect(url_for('download', meeting_id=meeting_id))
 
     return render_template("finish.html", reuniao=reuniao)
 
