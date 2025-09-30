@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 import qrcode
 import io
 import base64
@@ -39,7 +39,7 @@ db = SQLAlchemy(app)
 class Reuniao(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     descricao = db.Column(db.String(200), nullable=False)
-    data_criacao = db.Column(db.DateTime, nullable=False, default=datetime.now())
+    data_criacao = db.Column(db.DateTime, nullable=False, default=datetime.now(timezone('America/Sao_Paulo')))
     finalizada = db.Column(db.Boolean, default=False)
     participantes = db.relationship('Presenca', back_populates='reuniao', cascade="all, delete-orphan")
 
@@ -49,7 +49,7 @@ class Presenca(db.Model):
     cargo = db.Column(db.String(100))
     setor = db.Column(db.String(100))
     # Usar UTC para timestamps no servidor é a melhor prática
-    entrada = db.Column(db.DateTime, nullable=False, default=datetime.now())
+    entrada = db.Column(db.DateTime, nullable=False, default=datetime.now(timezone('America/Sao_Paulo')))
     meeting_id = db.Column(db.String(36), db.ForeignKey('reuniao.id'), nullable=False)
     reuniao = db.relationship('Reuniao', back_populates='participantes')
 
